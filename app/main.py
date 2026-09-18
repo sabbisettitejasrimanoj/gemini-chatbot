@@ -1,13 +1,14 @@
 from pathlib import Path
+import re
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .db import add_message, create_conversation, get_messages, list_documents, save_document
+from .db import add_message, create_conversation, get_messages, list_documents, replace_document, save_document
 from .config import settings
-from .rag import embed, extract_docx_content, extract_text_from_file, generate_answer, is_footwear_related, requested_filters, retrieve, source_matches_query, split_text
+from .rag import embed, extract_docx_content, extract_text_from_file, generate_answer, is_footwear_related, requested_filters, requested_footwear_types, retrieve, source_matches_query, split_text
 from .schemas import ChatRequest
 
 app = FastAPI(title="Lumen RAG Chatbot", version="1.0.0")
@@ -18,27 +19,45 @@ app.mount("/static", StaticFiles(directory=static_directory), name="static")
 app.mount("/uploads", StaticFiles(directory=uploads_directory), name="uploads")
 
 
-def ensure_catalog_images() -> list[str]:
-    catalog_path = Path(__file__).parent.parent / "Complete_Footwear_Product_Catalogue.docx"
-    if not catalog_path.exists():
-        return []
+def import_catalogs() -> list[str]:
+    catalog_paths = sorted(Path(__file__).parent.parent.glob("*.docx"))
+    all_image_urls: list[str] = []
+    for catalog_path in catalog_paths:
+        title = catalog_path.stem.replace("_", " ")
+        try:
+            extracted_text, embedded_images = extract_docx_content(catalog_path.read_bytes())
+        except Exception:
+            continue
 
-    try:
-        _, embedded_images = extract_docx_content(catalog_path.read_bytes())
-    except Exception:
-        return []
+        image_urls = []
+        for image_name, image_bytes, _ in embedded_images:
+            safe_name = f"{catalog_path.stem}_{Path(image_name).name}".replace(" ", "_")
+            image_path = uploads_directory / safe_name
+            if not image_path.exists():
+                image_path.write_bytes(image_bytes)
+            image_urls.append(f"/uploads/{safe_name}")
+        all_image_urls.extend(image_urls)
 
-    image_urls = []
-    for image_name, image_bytes, _ in embedded_images:
-        safe_name = f"catalog_{Path(image_name).name}"
-        image_path = uploads_directory / safe_name
-        if not image_path.exists():
-            image_path.write_bytes(image_bytes)
-        image_urls.append(f"/uploads/{safe_name}")
-    return image_urls
+        content = extracted_text or f"Footwear styles from {title}."
+        entries = re.findall(r"(?:^|\n)\s*\d{1,2}\s+(.+)", extracted_text)
+        if entries and image_urls:
+            chunks = [{
+                "content": f"{entry} from {title}.",
+                "embedding": None,
+                "image_urls": [image_urls[index]],
+                "image_url": image_urls[index],
+            } for index, entry in enumerate(entries[:len(image_urls)])]
+        else:
+            text_chunks = split_text(content) or [content]
+            chunks = []
+            for index, chunk in enumerate(text_chunks):
+                chunk_images = [image_urls[index % len(image_urls)]] if image_urls else []
+                chunks.append({"content": chunk, "embedding": None, "image_urls": chunk_images, "image_url": chunk_images[0] if chunk_images else None})
+        replace_document(title, content, chunks)
+    return all_image_urls
 
 
-catalog_image_urls = ensure_catalog_images()
+catalog_image_urls = import_catalogs()
 
 
 @app.get("/", include_in_schema=False)
@@ -123,19 +142,26 @@ def chat(payload: ChatRequest) -> dict[str, object]:
             add_message(conversation_id, "assistant", answer)
             return {"conversation_id": conversation_id, "answer": answer, "sources": []}
 
-        matches = retrieve(payload.message)
+        matches = retrieve(payload.message, limit=12)
         context = "\n\n".join(f"[{match['title']}] {match['content']}" for match in matches if match["score"] > 0)
         answer = generate_answer(payload.message, context)
         add_message(conversation_id, "assistant", answer)
         sources = []
         seen_sources = set()
         for match in matches:
-            if match["score"] <= 0 or match["title"] in seen_sources:
+            if match["score"] <= 0 or match["title"] in seen_sources or not source_matches_query(match["title"], match["content"], payload.message):
                 continue
             seen_sources.add(match["title"])
-            sources.append({"title": match["title"], "excerpt": match["content"][:180], "image_url": match.get("image_url"), "image_urls": match.get("image_urls", [])})
+            image_urls = match.get("image_urls", [])
+            if not image_urls and match.get("image_url"):
+                image_urls = [match["image_url"]]
+            source = {"title": match["title"], "excerpt": match["content"][:180]}
+            if image_urls and is_footwear_related(f"{match['title']} {match['content']}"):
+                source["image_urls"] = image_urls
+            sources.append(source)
         audiences, features = requested_filters(payload.message)
-        if catalog_image_urls and not audiences and not features:
+        footwear_types = requested_footwear_types(payload.message)
+        if catalog_image_urls and not audiences and not features and not footwear_types:
             sources.append({"title": "Footwear catalog styles", "excerpt": "Images from the footwear catalog.", "image_urls": catalog_image_urls[:8]})
         return {"conversation_id": conversation_id, "answer": answer, "sources": sources}
     except Exception as error:

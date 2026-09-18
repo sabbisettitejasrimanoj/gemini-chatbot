@@ -17,6 +17,18 @@ class FootwearGuardTests(unittest.TestCase):
         self.assertTrue(rag.source_matches_query("Men's Running Shoes", "Men's breathable running shoes", "Show men's running shoes"))
         self.assertFalse(rag.source_matches_query("Women's Sandals", "Women's casual sandals", "Show men's running shoes"))
 
+    def test_image_source_text_must_be_footwear_related(self):
+        self.assertTrue(rag.is_footwear_related("Women's running shoes"))
+        self.assertFalse(rag.is_footwear_related("Company financial report"))
+
+    def test_source_filters_requested_footwear_type(self):
+        self.assertTrue(rag.source_matches_query("Men's running shoes", "Breathable running shoes", "Show running shoes"))
+        self.assertFalse(rag.source_matches_query("Leather boots", "Waterproof boots", "Show sandals"))
+
+    def test_source_filters_leather_shoes(self):
+        self.assertTrue(rag.source_matches_query("Leather Shoes", "Genuine leather upper", "Show leather shoes"))
+        self.assertFalse(rag.source_matches_query("Canvas Sneakers", "Canvas upper", "Show leather shoes"))
+
     def test_api_unavailable_returns_fallback(self):
         original_client = rag._client
         rag._client = Mock()

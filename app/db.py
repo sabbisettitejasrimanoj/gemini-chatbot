@@ -26,6 +26,15 @@ def save_document(title: str, content: str, chunks: list[dict[str, Any]]) -> str
     return str(result.inserted_id)
 
 
+def document_exists(title: str) -> bool:
+    return documents.count_documents({"title": title}, limit=1) > 0
+
+
+def replace_document(title: str, content: str, chunks: list[dict[str, Any]]) -> str:
+    documents.delete_many({"title": title})
+    return save_document(title, content, chunks)
+
+
 def list_documents() -> list[dict[str, Any]]:
     return [
         {"id": str(item["_id"]), "title": item["title"], "created_at": item["created_at"].isoformat()}

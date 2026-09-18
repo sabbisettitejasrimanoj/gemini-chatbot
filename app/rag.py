@@ -84,6 +84,20 @@ FEATURE_TERMS = {
     "sandals": {"sandal", "sandals", "slides", "flip-flops"},
     "boots": {"boot", "boots", "ankle", "workwear"},
 }
+FOOTWEAR_TYPE_TERMS = {
+    "running shoes": {"running", "jogging"},
+    "sneakers": {"sneaker", "sneakers", "trainer", "trainers"},
+    "sports shoes": {"sports", "sport", "athletic"},
+    "hiking shoes": {"hiking", "trail"},
+    "boots": {"boot", "boots"},
+    "sandals": {"sandal", "sandals", "slides", "flip-flops"},
+    "loafers": {"loafer", "loafers"},
+    "heels": {"heel", "heels"},
+    "slippers": {"slipper", "slippers"},
+    "dress shoes": {"formal", "dress", "office", "business"},
+    "leather shoes": {"leather"},
+    "canvas shoes": {"canvas"},
+}
 
 
 def is_footwear_related(query: str) -> bool:
@@ -99,12 +113,20 @@ def requested_filters(query: str) -> tuple[set[str], set[str]]:
     return audiences, features
 
 
+def requested_footwear_types(query: str) -> set[str]:
+    normalized = set(re.findall(r"[a-z0-9-]+", query.lower()))
+    return {footwear_type for footwear_type, terms in FOOTWEAR_TYPE_TERMS.items() if normalized & terms}
+
+
 def source_matches_query(title: str, content: str, query: str) -> bool:
     audiences, features = requested_filters(query)
+    footwear_types = requested_footwear_types(query)
     source_text = f"{title} {content}".lower()
     if audiences and not any(term in source_text for audience in audiences for term in AUDIENCE_TERMS[audience]):
         return False
     if features and not any(term in source_text for feature in features for term in FEATURE_TERMS[feature]):
+        return False
+    if footwear_types and not any(term in source_text for footwear_type in footwear_types for term in FOOTWEAR_TYPE_TERMS[footwear_type]):
         return False
     return True
 
