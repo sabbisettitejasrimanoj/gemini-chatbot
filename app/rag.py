@@ -1,14 +1,19 @@
 import math
+import mimetypes
 import re
+import logging
+from pathlib import PurePosixPath
 from io import BytesIO
 from typing import Any
+from zipfile import ZipFile
+from xml.etree import ElementTree
 
 try:
     import fitz
 except ImportError:  # pragma: no cover
     fitz = None
 
-from google import genai
+from groq import Groq
 
 try:
     from PIL import Image
@@ -23,7 +28,9 @@ except ImportError:  # pragma: no cover
 from .config import settings
 from .db import get_all_chunks
 
-_client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
+logger = logging.getLogger(__name__)
+
+_client = Groq(api_key=settings.groq_api_key) if settings.groq_api_key else None
 
 FOOTWEAR_KEYWORDS = {
     "footwear",
@@ -63,6 +70,21 @@ FOOTWEAR_KEYWORDS = {
     "materials",
 }
 
+AUDIENCE_TERMS = {
+    "men": {"men", "mens", "men's", "male", "gentlemen"},
+    "women": {"women", "womens", "women's", "female", "ladies"},
+    "children": {"children", "kids", "kid", "boys", "girls"},
+}
+FEATURE_TERMS = {
+    "running": {"running", "jogging", "trainer", "trainers"},
+    "hiking": {"hiking", "trail", "outdoor"},
+    "formal": {"formal", "dress", "office", "business"},
+    "casual": {"casual", "everyday", "daily", "lifestyle"},
+    "comfort": {"comfort", "comfortable", "cushioning", "support", "soft"},
+    "sandals": {"sandal", "sandals", "slides", "flip-flops"},
+    "boots": {"boot", "boots", "ankle", "workwear"},
+}
+
 
 def is_footwear_related(query: str) -> bool:
     text = re.findall(r"[a-zA-Z]+", query.lower())
@@ -70,8 +92,29 @@ def is_footwear_related(query: str) -> bool:
     return bool(normalized & FOOTWEAR_KEYWORDS) or any(term in query.lower() for term in ["shoe", "boots", "sandal", "sneaker", "trainer", "footwear"])
 
 
+def requested_filters(query: str) -> tuple[set[str], set[str]]:
+    normalized = set(re.findall(r"[a-z0-9']+", query.lower()))
+    audiences = {audience for audience, terms in AUDIENCE_TERMS.items() if normalized & terms}
+    features = {feature for feature, terms in FEATURE_TERMS.items() if normalized & terms}
+    return audiences, features
+
+
+def source_matches_query(title: str, content: str, query: str) -> bool:
+    audiences, features = requested_filters(query)
+    source_text = f"{title} {content}".lower()
+    if audiences and not any(term in source_text for audience in audiences for term in AUDIENCE_TERMS[audience]):
+        return False
+    if features and not any(term in source_text for feature in features for term in FEATURE_TERMS[feature]):
+        return False
+    return True
+
+
 def extract_text_from_file(filename: str, file_bytes: bytes) -> str:
     lower = filename.lower()
+
+    if lower.endswith(".docx"):
+        text, _ = extract_docx_content(file_bytes)
+        return text
 
     if lower.endswith(".pdf"):
         if fitz is None:
@@ -81,7 +124,7 @@ def extract_text_from_file(filename: str, file_bytes: bytes) -> str:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             for page in doc:
                 text = page.get_text()
-                if text:
+                if isinstance(text, str) and text:
                     parts.append(text)
             return "\n".join(parts)
         except Exception:
@@ -99,6 +142,29 @@ def extract_text_from_file(filename: str, file_bytes: bytes) -> str:
     return file_bytes.decode("utf-8", errors="ignore")
 
 
+def extract_docx_content(file_bytes: bytes) -> tuple[str, list[tuple[str, bytes, str]]]:
+    """Read document paragraphs and embedded images from a DOCX archive."""
+    namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    images: list[tuple[str, bytes, str]] = []
+    with ZipFile(BytesIO(file_bytes)) as archive:
+        document_xml = ElementTree.fromstring(archive.read("word/document.xml"))
+        paragraphs: list[str] = []
+        for paragraph in document_xml.iter(f"{namespace}p"):
+            text_parts = [node.text for node in paragraph.iter(f"{namespace}t") if isinstance(node.text, str)]
+            text = "".join(text_parts).strip()
+            if text:
+                paragraphs.append(text)
+
+        for member in sorted(archive.namelist()):
+            path = PurePosixPath(member)
+            if path.parent != PurePosixPath("word/media"):
+                continue
+            media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            images.append((path.name, archive.read(member), media_type))
+
+    return "\n".join(paragraphs), images
+
+
 def split_text(text: str, words_per_chunk: int = 180, overlap: int = 30) -> list[str]:
     words = text.split()
     chunks: list[str] = []
@@ -111,10 +177,7 @@ def split_text(text: str, words_per_chunk: int = 180, overlap: int = 30) -> list
 
 
 def embed(text: str) -> list[float] | None:
-    if not _client:
-        return None
-    response = _client.models.embed_content(model="gemini-embedding-001", contents=text)
-    return list(response.embeddings[0].values) if response.embeddings else None
+    return None
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
@@ -131,11 +194,9 @@ def lexical_score(query: str, content: str) -> float:
 
 
 def retrieve(query: str, limit: int = 4) -> list[dict[str, Any]]:
-    query_embedding = embed(query)
     scored = []
     for chunk in get_all_chunks():
-        stored_embedding = chunk.get("embedding")
-        score = cosine_similarity(query_embedding, stored_embedding) if query_embedding and stored_embedding else lexical_score(query, chunk["content"])
+        score = lexical_score(query, chunk["content"])
         scored.append({**chunk, "score": score})
     return sorted(scored, key=lambda item: item["score"], reverse=True)[:limit]
 
@@ -170,14 +231,14 @@ def _fallback_footwear_summary(context: str) -> str:
             categories["Best for everyday wear"].append(title)
 
     if all(not items for items in categories.values()):
-        return "The Gemini service is temporarily unavailable. Please try again in a moment or add more footwear knowledge to your database."
+        return "The AI service is temporarily unavailable. Please try again in a moment or add more footwear knowledge to your database."
 
     lines = []
     for label, items in categories.items():
         if items:
             lines.append(f"- {label}: {', '.join(items[:2])}")
 
-    return "The Gemini service is temporarily unavailable. Here are the best footwear picks based on the stored knowledge:\n" + "\n".join(lines[:3]) + "."
+    return "The AI service is temporarily unavailable. Here are the best footwear picks based on the stored knowledge:\n" + "\n".join(lines[:3]) + "."
 
 
 def generate_answer(query: str, context: str) -> str:
@@ -185,11 +246,7 @@ def generate_answer(query: str, context: str) -> str:
         return "I can only answer footwear-related questions. Please ask about shoes, boots, sandals, sneakers, or other footwear."
 
     if not _client:
-        return (
-            "Gemini is not configured yet. I found this relevant context:\n\n"
-            f"{context or 'No matching documents found.'}\n\n"
-            "Add GEMINI_API_KEY to .env to enable generated answers."
-        )
+        return "Groq is not configured. Add your GROQ_API_KEY to .env and restart the server to enable AI-generated answers."
     prompt = f"""You are Lumen, a footwear-focused assistant. Answer the user's question using only the context below. Only answer if the question is about footwear. If it is not about footwear, refuse politely. Keep the answer concise and factual.
 
 Context:
@@ -197,9 +254,15 @@ Context:
 
 Question: {query}"""
     try:
-        response = _client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-        return response.text or "I could not generate an answer."
-    except Exception:
+        response = _client.chat.completions.create(
+            model=settings.groq_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=500,
+        )
+        return response.choices[0].message.content or "I could not generate an answer."
+    except Exception as error:
+        logger.warning("Groq answer generation failed: %s: %s", type(error).__name__, error)
         if context:
             return _fallback_footwear_summary(context)
-        return "The Gemini service is temporarily unavailable. Please try again in a moment or add more footwear knowledge to your database."
+        return "The AI service is temporarily unavailable. Please try again in a moment or add more footwear knowledge to your database."

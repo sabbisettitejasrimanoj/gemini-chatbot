@@ -3,30 +3,51 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lumen | RAG workspace</title>
+  <title>VAYRA | Footwear</title>
   <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+    .topbar-actions { display: flex; align-items: center; gap: 8px; }
+    .window-control { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 5px; color: var(--moss); background: transparent; font: 18px Georgia; line-height: 1; cursor: pointer; }
+    .window-control:hover { background: var(--sage); }
+    .source-item { margin-top: 12px; }
+    .source-gallery { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+    .source-image { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); }
+    .shell.is-maximized { grid-template-columns: minmax(0, 1fr); }
+    .shell.is-maximized .sidebar { display: none; }
+    body.is-minimized .chat, body.is-minimized .composer, body.is-minimized .disclaimer { display: none; }
+    body.is-minimized .workspace { min-height: auto; }
+    body.is-minimized .topbar { border-bottom: 0; }
+    @media (max-width: 700px) {
+      .topbar { padding: 22px 5vw 18px; }
+      .topbar-actions { gap: 5px; }
+      .provider { display: none; }
+      .window-control { width: 28px; height: 28px; }
+    }
+  </style>
 </head>
 <body>
   <main class="shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-icon">L</span><span><small>RAG workspace</small><strong>Lumen</strong></span></div>
+      <div class="brand"><span class="brand-icon">L</span><span><small>Footwear</small><strong>VAYRA</strong></span></div>
       <button class="new-chat" id="new-chat"><span>+</span> New conversation</button>
-      <div class="side-label">Knowledge base</div>
-      <button class="knowledge-link" id="open-knowledge"><span class="file-icon">▤</span> Add documents <b>+</b></button>
-      <div class="documents" id="documents"></div>
+      <div class="admin-tools" id="admin-tools" hidden>
+        <div class="side-label">Knowledge base</div>
+        <button class="knowledge-link" id="open-knowledge"><span class="file-icon">▤</span> Add documents <b>+</b></button>
+        <div class="documents" id="documents"></div>
+      </div>
       <div class="side-footer"><span class="online-dot"></span> MongoDB connected locally</div>
     </aside>
     <section class="workspace">
-      <header class="topbar"><div><small>CONVERSATION</small><h1>Ask your knowledge base</h1></div><div class="provider"><i></i> Gemini RAG</div></header>
+      <header class="topbar"><div><small>CONVERSATION</small><h1>Ask your friendly bot</h1></div><div class="topbar-actions"><div class="provider"><i></i> Groq RAG</div><button class="window-control" id="minimize-chat" type="button" aria-label="Minimize chat" title="Minimize chat">−</button><button class="window-control" id="maximize-chat" type="button" aria-label="Maximize chat" title="Maximize chat">□</button></div></header>
       <div class="chat" id="chat">
-        <div class="welcome" id="welcome"><div class="spark">✦</div><small>GROUNDED CONVERSATIONS</small><h2>Bring the context.<br><em>Find the signal.</em></h2><p>Upload your team’s notes, docs, or reference material. Lumen retrieves the most relevant passages before it answers.</p><div class="suggestions"><button data-prompt="What documents are in my knowledge base?">Search my knowledge base <span>↗</span></button><button data-prompt="How should I get started?">Help me get started <span>↗</span></button></div></div>
+        <div class="welcome" id="welcome"><div class="spark">✦</div><small>Choose the your selection</small><h2>Find your style.<br><em>Walk your way.</em></h2></div>
         <div class="messages" id="messages"></div>
       </div>
-      <form class="composer" id="composer"><textarea id="message" rows="1" placeholder="Ask a question about your documents..."></textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button type="submit" id="send">↑</button></div></form>
-      <p class="disclaimer">Answers are grounded in your stored documents when relevant. Always verify important information.</p>
+      <form class="composer" id="composer"><textarea id="message" rows="1" placeholder="Ask a question about your footwear styles..."></textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button type="submit" id="send">↑</button></div></form>
+      <p class="disclaimer"></p>
     </section>
   </main>
-  <dialog id="knowledge-dialog"><form method="dialog" id="knowledge-form"><div class="dialog-header"><div><small>KNOWLEDGE BASE</small><h2>Add a document</h2></div><button value="cancel" class="close">×</button></div><label>Title<input id="doc-title" required maxlength="200" placeholder="e.g. Product handbook" /></label><label>Content<textarea id="doc-content" placeholder="Paste the text you want Lumen to remember..."></textarea></label><label>Upload PDF or image<input id="doc-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" /></label><div class="dialog-actions"><button value="cancel" class="cancel">Cancel</button><button value="default" class="save">Store document</button></div><p class="dialog-status" id="doc-status"></p></form></dialog>
+  <dialog id="knowledge-dialog"><form method="dialog" id="knowledge-form"><div class="dialog-header"><div><small>KNOWLEDGE BASE</small><h2>Add a document</h2></div><button value="cancel" class="close">×</button></div><label>Title<input id="doc-title" required maxlength="200" placeholder="e.g. Product handbook" /></label><label>Content<textarea id="doc-content" placeholder="Paste the text you want Lumen to remember..."></textarea></label><label>Upload DOCX, PDF or image<input id="doc-file" type="file" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp" /></label><div class="dialog-actions"><button value="cancel" class="cancel">Cancel</button><button value="default" class="save">Store document</button></div><p class="dialog-status" id="doc-status"></p></form></dialog>
   <script src="/static/app.js"></script>
 </body>
 </html>

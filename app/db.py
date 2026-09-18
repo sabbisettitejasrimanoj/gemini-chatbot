@@ -73,5 +73,6 @@ def get_all_chunks() -> list[dict[str, Any]]:
                 "content": chunk["content"],
                 "embedding": chunk.get("embedding"),
                 "image_url": chunk.get("image_url"),
+                "image_urls": chunk.get("image_urls", []),
             })
     return chunks

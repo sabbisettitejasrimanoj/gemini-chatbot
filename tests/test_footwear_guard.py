@@ -1,7 +1,7 @@
 import unittest
+from io import BytesIO
 from unittest.mock import Mock
-
-from google.genai.errors import ClientError
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from app import rag
 
@@ -13,13 +13,14 @@ class FootwearGuardTests(unittest.TestCase):
     def test_non_footwear_question_is_blocked(self):
         self.assertFalse(rag.is_footwear_related("How do I fix my laptop battery?"))
 
+    def test_source_filters_match_requested_audience_and_feature(self):
+        self.assertTrue(rag.source_matches_query("Men's Running Shoes", "Men's breathable running shoes", "Show men's running shoes"))
+        self.assertFalse(rag.source_matches_query("Women's Sandals", "Women's casual sandals", "Show men's running shoes"))
+
     def test_api_unavailable_returns_fallback(self):
         original_client = rag._client
         rag._client = Mock()
-        rag._client.models.generate_content.side_effect = ClientError(
-            503,
-            {"error": {"message": "This model is currently experiencing high demand. Please try again later.", "status": "UNAVAILABLE"}},
-        )
+        rag._client.chat.completions.create.side_effect = RuntimeError("temporary provider outage")
         try:
             result = rag.generate_answer(
                 "Which sneakers fit size 10?",
@@ -43,6 +44,28 @@ class FootwearGuardTests(unittest.TestCase):
             rag.extract_text_from_file("catalog.pdf", b"not-a-real-pdf")
         except Exception as exc:
             self.fail(f"PDF extraction raised an exception: {exc}")
+
+    def test_extract_docx_text_and_embedded_images(self):
+        document_xml = b'''<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Nike Pegasus running shoe</w:t></w:r></w:p></w:body></w:document>'''
+        docx_bytes = BytesIO()
+        with ZipFile(docx_bytes, "w", ZIP_DEFLATED) as archive:
+            archive.writestr("word/document.xml", document_xml)
+            archive.writestr("word/media/image1.png", b"png-bytes")
+
+        text, images = rag.extract_docx_content(docx_bytes.getvalue())
+        self.assertIn("Nike Pegasus", text)
+        self.assertEqual(images[0][0], "image1.png")
+        self.assertEqual(images[0][1], b"png-bytes")
+
+    def test_extract_image_only_docx_returns_no_text_but_images(self):
+        docx_bytes = BytesIO()
+        with ZipFile(docx_bytes, "w", ZIP_DEFLATED) as archive:
+            archive.writestr("word/document.xml", b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>')
+            archive.writestr("word/media/image1.jpg", b"jpeg-bytes")
+
+        text, images = rag.extract_docx_content(docx_bytes.getvalue())
+        self.assertEqual(text, "")
+        self.assertEqual(images[0][2], "image/jpeg")
 
 
 if __name__ == "__main__":
