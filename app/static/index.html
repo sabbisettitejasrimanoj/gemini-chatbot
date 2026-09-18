@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumen | RAG workspace</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-icon">L</span><span><small>RAG workspace</small><strong>Lumen</strong></span></div>
+      <button class="new-chat" id="new-chat"><span>+</span> New conversation</button>
+      <div class="side-label">Knowledge base</div>
+      <button class="knowledge-link" id="open-knowledge"><span class="file-icon">▤</span> Add documents <b>+</b></button>
+      <div class="documents" id="documents"></div>
+      <div class="side-footer"><span class="online-dot"></span> MongoDB connected locally</div>
+    </aside>
+    <section class="workspace">
+      <header class="topbar"><div><small>CONVERSATION</small><h1>Ask your knowledge base</h1></div><div class="provider"><i></i> Gemini RAG</div></header>
+      <div class="chat" id="chat">
+        <div class="welcome" id="welcome"><div class="spark">✦</div><small>GROUNDED CONVERSATIONS</small><h2>Bring the context.<br><em>Find the signal.</em></h2><p>Upload your team’s notes, docs, or reference material. Lumen retrieves the most relevant passages before it answers.</p><div class="suggestions"><button data-prompt="What documents are in my knowledge base?">Search my knowledge base <span>↗</span></button><button data-prompt="How should I get started?">Help me get started <span>↗</span></button></div></div>
+        <div class="messages" id="messages"></div>
+      </div>
+      <form class="composer" id="composer"><textarea id="message" rows="1" placeholder="Ask a question about your documents..."></textarea><div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button type="submit" id="send">↑</button></div></form>
+      <p class="disclaimer">Answers are grounded in your stored documents when relevant. Always verify important information.</p>
+    </section>
+  </main>
+  <dialog id="knowledge-dialog"><form method="dialog" id="knowledge-form"><div class="dialog-header"><div><small>KNOWLEDGE BASE</small><h2>Add a document</h2></div><button value="cancel" class="close">×</button></div><label>Title<input id="doc-title" required maxlength="200" placeholder="e.g. Product handbook" /></label><label>Content<textarea id="doc-content" placeholder="Paste the text you want Lumen to remember..."></textarea></label><label>Upload PDF or image<input id="doc-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" /></label><div class="dialog-actions"><button value="cancel" class="cancel">Cancel</button><button value="default" class="save">Store document</button></div><p class="dialog-status" id="doc-status"></p></form></dialog>
+  <script src="/static/app.js"></script>
+</body>
+</html>
