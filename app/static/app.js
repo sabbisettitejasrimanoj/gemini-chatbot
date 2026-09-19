@@ -19,12 +19,61 @@ function addMessage(role, content, sources = []) {
     const imageHtml = imageUrls.length ? `<div class="source-gallery">${imageUrls.map((imageUrl) => `<img src="${imageUrl}" alt="${escapeHtml(source.title)}" class="source-image" loading="lazy" />`).join('')}</div>` : '';
     return `<div class="source-item"><small class="sources">${escapeHtml(source.title)}</small>${imageHtml}</div>`;
   }).join('') : '';
-  row.innerHTML = `<div class="avatar">${role === 'assistant' ? 'L' : 'You'}</div><div class="bubble"><small>${role === 'assistant' ? 'LUMEN' : 'YOU'}</small><p>${escapeHtml(content).replaceAll('\n', '<br>')}</p>${sourceHtml}</div>`;
+  const contentHtml = role === 'assistant' ? formatAssistantContent(content) : `<p>${escapeHtml(content).replaceAll('\n', '<br>')}</p>`;
+  row.innerHTML = `<div class="avatar">${role === 'assistant' ? 'L' : 'You'}</div><div class="bubble"><small>${role === 'assistant' ? 'LUMEN' : 'YOU'}</small>${contentHtml}${sourceHtml}</div>`;
   messages.append(row);
   chat.scrollTop = chat.scrollHeight;
 }
 
 function escapeHtml(value) { return value.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]); }
+
+function formatAssistantContent(value) {
+  const lines = escapeHtml(value).split('\n');
+  const output = [];
+  let listType = null;
+
+  const closeList = () => {
+    if (listType) {
+      output.push(`</${listType}>`);
+      listType = null;
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      closeList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^#{1,3}\s+(.+)$/);
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    const numbered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+
+    if (heading) {
+      closeList();
+      output.push(`<h3>${formatInlineMarkdown(heading[1])}</h3>`);
+    } else if (bullet || numbered) {
+      const nextListType = bullet ? 'ul' : 'ol';
+      if (listType !== nextListType) {
+        closeList();
+        listType = nextListType;
+        output.push(`<${listType}>`);
+      }
+      output.push(`<li>${formatInlineMarkdown((bullet || numbered)[1])}</li>`);
+    } else {
+      closeList();
+      output.push(`<p>${formatInlineMarkdown(trimmed)}</p>`);
+    }
+  }
+
+  closeList();
+  return output.join('');
+}
+
+function formatInlineMarkdown(value) {
+  return value.replace(/(\*\*|__)(.+?)\1/g, '<strong>$2</strong>');
+}
 
 async function sendMessage(content) {
   if (!content.trim() || sendButton.disabled) return;

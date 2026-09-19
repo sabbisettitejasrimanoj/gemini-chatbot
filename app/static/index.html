@@ -12,6 +12,12 @@
     .source-item { margin-top: 12px; }
     .source-gallery { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
     .source-image { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); }
+    .bubble > p, .bubble > h3, .bubble > ul, .bubble > ol { margin: 0 0 10px; }
+    .bubble > :last-child { margin-bottom: 0; }
+    .bubble > h3 { color: var(--moss); font: 600 16px Newsreader, Georgia, serif; }
+    .bubble > ul, .bubble > ol { padding-left: 22px; }
+    .bubble li { margin: 5px 0; }
+    .bubble strong { color: var(--moss); font-weight: 700; }
     .shell.is-maximized { grid-template-columns: minmax(0, 1fr); }
     .shell.is-maximized .sidebar { display: none; }
     body.is-minimized .chat, body.is-minimized .composer, body.is-minimized .disclaimer { display: none; }
